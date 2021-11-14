@@ -140,17 +140,17 @@ def main():
     city_search_values = ["Krakow, PL", "Warszawa, PL", "Poznan, PL", "Katowice, PL", "Wroclaw, PL",
                       "Gdansk, PL", "Szczecin, PL", "Lodz, PL", "Rzeszow, PL", "Bialystok, PL"]
 
+    max_hours_back = 5
+
     for result in GatherCurrentWeatherData(city_search_values):
         print(result.city, result.country_code, result.weather.temp,
               result.timestamp)
 
         print("Historical data:")
         i = 1
-        for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon, max_hours_back=100):
+        for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon, max_hours_back=max_hours_back):
             print(f"{i} hours ago: temp = {historical_temp.temp}")
             i += 1
-
-        return
 
 
 if __name__ == '__main__':
