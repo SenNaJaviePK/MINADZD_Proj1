@@ -2,6 +2,7 @@ import requests
 import json
 from datetime import datetime, timedelta
 import time
+import pymongo
 
 api_key = '3b3b2ba819d8c7377a392492d3b2151b'
 
@@ -83,7 +84,7 @@ def parse_historical_weather_api_data(historical_weather_data):
 
         hourly_stats.append(collected_weather)
 
-    #return reversed array
+    # return reversed array
     return hourly_stats[::-1]
 
 
@@ -98,7 +99,7 @@ def GatherCurrentWeatherData(city_search_values):
         if code == 200:
             parsed_weather_data = parse_weather_api_data(weather_data)
 
-            #print(parsed_weather_data.city, parsed_weather_data.country_code, parsed_weather_data.weather.temp, parsed_weather_data.timestamp)
+            # print(parsed_weather_data.city, parsed_weather_data.country_code, parsed_weather_data.weather.temp, parsed_weather_data.timestamp)
 
             yield parsed_weather_data
 
@@ -126,33 +127,65 @@ def GatherHistoricalWeatherData(lat, lon, max_hours_back):
             parsed_weather_data = parse_historical_weather_api_data(weather_data)
 
             for i in range(len(parsed_weather_data)):
-                #print(parsed_weather_data[i].temp)
+                # print(parsed_weather_data[i].temp)
                 yield parsed_weather_data[i]
                 hours_to_gather -= 1
                 if hours_to_gather == 0:
                     break;
-
 
         days_ago += 1
 
 
 def main():
     city_search_values = ["Krakow, PL", "Warszawa, PL", "Poznan, PL", "Katowice, PL", "Wroclaw, PL",
-                      "Gdansk, PL", "Szczecin, PL", "Lodz, PL", "Rzeszow, PL", "Bialystok, PL"]
+                          "Gdansk, PL", "Szczecin, PL", "Lodz, PL", "Rzeszow, PL", "Bialystok, PL"]
 
     max_hours_back = 5
+
+    local = pymongo.MongoClient("mongodb://localhost:27017/")
+    local_db = local["local_database"]
+    local_col = local_db["weather_statistic"]
+
+    cloud = pymongo.MongoClient("mongodb+srv://exampleUser:exampleUser@cluster0.fawtu.mongodb.net/myFirstDatabase"
+                                "?retryWrites=true&w=majority")
+    cloud_db = cloud["cloud_database"]
+    cloud_col = cloud_db["weather_statistic"]
 
     for result in GatherCurrentWeatherData(city_search_values):
         print(result.city, result.country_code, result.weather.temp,
               result.timestamp)
 
+        actual_record = {"city": result.city, "country_code": result.country_code,
+                         "timestamp": result.timestamp, "lat": result.lat, "lon": result.lon,
+                         "temp": result.weather.temp,
+                         "clouds": result.weather.clouds, "min_temp": result.weather.min_temp,
+                         "max_temp": result.weather.max_temp,
+                         "feels_like": result.weather.feels_like, "humidity": result.weather.humidity,
+                         "pressure": result.weather.pressure,
+                         "visibility": result.weather.visibility, "wind_speed": result.weather.wind_speed}
+
+        print(actual_record)
+        local_col.insert_one(actual_record)
+        cloud_col.insert_one(actual_record)
+
         print("Historical data:")
         i = 1
-        for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon, max_hours_back=max_hours_back):
+        for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon,
+                                                           max_hours_back=max_hours_back):
+            historic_record = {"city": result.city, "country_code": result.country_code,
+                               "timestamp": result.timestamp, "lat": result.lat, "lon": result.lon,
+                               "temp": result.weather.temp,
+                               "clouds": result.weather.clouds, "min_temp": result.weather.min_temp,
+                               "max_temp": result.weather.max_temp,
+                               "feels_like": result.weather.feels_like, "humidity": result.weather.humidity,
+                               "pressure": result.weather.pressure,
+                               "visibility": result.weather.visibility, "wind_speed": result.weather.wind_speed}
+            local_col.insert_one(historic_record)
+            cloud_col.insert_one(historic_record)
+
             print(f"{i} hours ago: temp = {historical_temp.temp}")
             i += 1
 
 
 if __name__ == '__main__':
     main()
-
