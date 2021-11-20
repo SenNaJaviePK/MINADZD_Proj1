@@ -24,9 +24,7 @@ city_search_values = [
 
 
 class Weather:
-    def __init__(self, min_temp, max_temp, temp, feels_like, pressure, humidity, visibility, wind_speed, clouds):
-        self.min_temp = min_temp
-        self.max_temp = max_temp
+    def __init__(self, temp, feels_like, pressure, humidity, visibility, wind_speed, clouds):
         self.temp = temp
         self.feels_like = feels_like
         self.pressure = pressure
@@ -76,8 +74,6 @@ def collect_weather_data(request):
 def parse_weather_api_data(weather_data):
     json_weather = json.loads(weather_data)
     collected_weather = Weather(
-        json_weather["main"]["temp_min"],
-        json_weather["main"]["temp_max"],
         json_weather["main"]["temp"],
         json_weather["main"]["feels_like"],
         json_weather["main"]["pressure"],
@@ -107,8 +103,6 @@ def parse_historical_weather_api_data(historical_weather_data):
         collected_weather = Weather(
             hour["temp"],
             hour["temp"],
-            hour["temp"],
-            hour["temp"],
             hour["pressure"],
             hour["humidity"],
             hour["visibility"],
@@ -124,10 +118,7 @@ def parse_historical_weather_api_data(historical_weather_data):
 
 def GatherCurrentWeatherData(city_search_values):
     for city in city_search_values:
-        request_time = datetime.now()
-
-        request_time_stamp = time.mktime(request_time.timetuple())
-        request = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric&dt={request_time_stamp}'
+        request = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric'
 
         code, weather_data = collect_weather_data(request)
         if code == 200:
@@ -204,9 +195,8 @@ def main():
 
             i = 1
             for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon,
-                                                            max_hours_back=max_hours_back):            
+                                                            max_hours_back=max_hours_back):
 
-                cl = pymongo.MongoClient
                 hist_temp_time = datetime.now() - timedelta(hours=i)
                 
                 coordinated_hist_weather = TimestampLocalizationWeather(result.city, result.country_code, hist_temp_time, result.lon, result.lat, historical_temp)
