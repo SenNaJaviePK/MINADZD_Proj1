@@ -3,8 +3,24 @@ import json
 from datetime import datetime, timedelta
 import time
 import pymongo
+from time import sleep
 
 api_key = '3b3b2ba819d8c7377a392492d3b2151b'
+cloud_db_user = 'exampleUser'
+cloud_db_password = 'exampleUser'
+
+city_search_values = [
+                        "Warszawa, PL", "Kraków, PL", "Łódź, PL", "Wrocław, PL", "Poznań, PL",
+                        "Gdansk, PL", "Szczecin, PL", "Bydgoszcz, PL", "Lublin, PL", "Białystok, PL",
+                        "Katowice, PL", "Gdynia, PL", "Częstochowa, PL", "Radom, PL", "Toruń, PL",
+                        "Sosnowiec, PL", "Rzeszów, PL", "Kielce, PL", "Gliwice, PL", "Olsztyn, PL",
+                        "Zabrze, PL", "Bielsko-Biała, PL", "Bytom, PL", "Zielona Góra, PL", "Rybnik, PL",
+                        "Ruda Śląska, PL", "Opole, PL", "Tychy, PL", "Gorzów Wielkopolski, PL", "Elbląg, PL",
+                        "Dąbrowa Górnicza, PL", "Płock, PL", "Wałbrzych, PL", "Włocławek, PL", "Tarnów, PL",
+                        "Chorzów, PL", "Koszalin, PL", "Kalisz, PL", "Legnica, PL", "Grudziądz, PL",
+                        "Jaworzno, PL", "Słupsk, PL", "Jastrzębie-Zdrój, PL", "Nowy Sącz, PL", "Jelenia Góra, PL",
+                        "Siedlce, PL", "Mysłowice, PL", "Konin, PL", "Piła, PL", "Piotrków Trybunalski, PL"
+                          ]
 
 
 class Weather:
@@ -28,6 +44,24 @@ class TimestampLocalizationWeather:
         self.lon = lon
         self.lat = lat
         self.weather = weather
+
+    def parse_json(self):
+        return {
+            "city": self.city,
+            "country_code": self.country_code,
+            "timestamp": self.timestamp,
+            "lat": self.lat,
+            "lon": self.lon,
+            "weather": {
+                "temp": self.weather.temp,
+                "feels_like": self.weather.feels_like,
+                "pressure": self.weather.pressure,
+                "humidity": self.weather.humidity,
+                "visibility": self.weather.visibility,
+                "wind_speed": self.weather.wind_speed,
+                "clouds": self.weather.clouds
+            }
+        }
 
 
 def collect_weather_data(request):
@@ -131,31 +165,21 @@ def GatherHistoricalWeatherData(lat, lon, max_hours_back):
                 yield parsed_weather_data[i]
                 hours_to_gather -= 1
                 if hours_to_gather == 0:
-                    break;
+                    break
 
         days_ago += 1
 
 
-def main():
-    city_search_values = ["Krakow, PL", "Warszawa, PL", "Poznan, PL", "Katowice, PL", "Wroclaw, PL",
-                          "Gdansk, PL", "Szczecin, PL", "Lodz, PL", "Rzeszow, PL", "Bialystok, PL"]
+def ConnectToDatabase(connection_string, database_name, table_name):
+    connection = pymongo.MongoClient(connection_string)
+    database = connection[database_name]
+    table = database[table_name]
 
-    max_hours_back = 5
+    return connection, database, table
 
-    local = pymongo.MongoClient("mongodb://localhost:27017/")
-    local_db = local["local_database"]
-    local_col = local_db["weather_statistic"]
 
-    cloud = pymongo.MongoClient("mongodb+srv://exampleUser:exampleUser@cluster0.fawtu.mongodb.net/myFirstDatabase"
-                                "?retryWrites=true&w=majority")
-    cloud_db = cloud["cloud_database"]
-    cloud_col = cloud_db["weather_statistic"]
-
-    for result in GatherCurrentWeatherData(city_search_values):
-        print(result.city, result.country_code, result.weather.temp,
-              result.timestamp)
-
-        actual_record = {"city": result.city, "country_code": result.country_code,
+def PushData(table, data):
+    actual_record = {"city": result.city, "country_code": result.country_code,
                          "timestamp": result.timestamp, "lat": result.lat, "lon": result.lon,
                          "temp": result.weather.temp,
                          "clouds": result.weather.clouds, "min_temp": result.weather.min_temp,
@@ -164,27 +188,53 @@ def main():
                          "pressure": result.weather.pressure,
                          "visibility": result.weather.visibility, "wind_speed": result.weather.wind_speed}
 
-        print(actual_record)
-        local_col.insert_one(actual_record)
-        cloud_col.insert_one(actual_record)
 
-        print("Historical data:")
-        i = 1
-        for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon,
-                                                           max_hours_back=max_hours_back):
-            historic_record = {"city": result.city, "country_code": result.country_code,
-                               "timestamp": result.timestamp, "lat": result.lat, "lon": result.lon,
-                               "temp": result.weather.temp,
-                               "clouds": result.weather.clouds, "min_temp": result.weather.min_temp,
-                               "max_temp": result.weather.max_temp,
-                               "feels_like": result.weather.feels_like, "humidity": result.weather.humidity,
-                               "pressure": result.weather.pressure,
-                               "visibility": result.weather.visibility, "wind_speed": result.weather.wind_speed}
-            local_col.insert_one(historic_record)
-            cloud_col.insert_one(historic_record)
+def main():
+    # Rerun time in seconds
+    rerun_time = 60 * 60
 
-            print(f"{i} hours ago: temp = {historical_temp.temp}")
-            i += 1
+    # SET max_hours_back=0 if want only actual data
+    max_hours_back = 0
+
+    local_connection, local_database, local_table = ConnectToDatabase("mongodb://localhost:27017/", "local_database", "weather_statistic")
+
+    cloud_connection, cloud_database, cloud_table = ConnectToDatabase(f"mongodb+srv://{cloud_db_user}:{cloud_db_password}@cluster0.fawtu.mongodb.net/myFirstDatabase"
+                                "?retryWrites=true&w=majority", "cloud_database", "weather_statistic")
+
+    while True:
+        for result in GatherCurrentWeatherData(city_search_values):
+            print(result.city, result.country_code, "temp:", result.weather.temp, result.timestamp)
+
+            actual_record = result.parse_json()
+            
+            local_table.insert_one(actual_record)
+            cloud_table.insert_one(actual_record)
+
+            if max_hours_back > 0:
+                print("Historical data:")
+
+            i = 1
+            for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon,
+                                                            max_hours_back=max_hours_back):            
+
+                hist_temp_time = datetime.now() - timedelta(hours=i)
+                
+                coordinated_hist_weather = TimestampLocalizationWeather(result.city, result.country_code, hist_temp_time, result.lon, result.lat, historical_temp)
+
+                print(">>", i, "hours ago", "temp:", coordinated_hist_weather.weather.temp)
+
+                hist_record = coordinated_hist_weather.parse_json()
+
+                local_table.insert_one(hist_record)
+                cloud_table.insert_one(hist_record)
+                i += 1
+
+        if rerun_time < 0:
+            return
+        
+        print("Sleep for", rerun_time, "seconds")
+        sleep(rerun_time)
+        print("Rerun after", rerun_time, "seconds")
 
 
 if __name__ == '__main__':
