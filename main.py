@@ -185,17 +185,17 @@ def main():
     # SET max_hours_back=0 if want only actual data
     max_hours_back = 0
 
-    local_connection, local_database, local_table = ConnectToDatabase("mongodb://localhost:27017/", "local_database", "weather_statistic")
+    local_connection, local_database, local_table = ConnectToDatabase("mongodb://localhost:27017/", "local_database", "weather_statistic_new")
 
     cloud_connection, cloud_database, cloud_table = ConnectToDatabase(f"mongodb+srv://{cloud_db_user}:{cloud_db_password}@cluster0.fawtu.mongodb.net/myFirstDatabase"
-                                "?retryWrites=true&w=majority", "cloud_database", "weather_statistic")
+                                "?retryWrites=true&w=majority", "cloud_database", "weather_statistic_new")
 
     while True:
         for result in GatherCurrentWeatherData(city_search_values):
             print(result.city, result.country_code, "temp:", result.weather.temp, result.timestamp)
 
             actual_record = result.parse_json()
-            
+
             local_table.insert_one(actual_record)
             cloud_table.insert_one(actual_record)
 
@@ -206,6 +206,7 @@ def main():
             for historical_temp in GatherHistoricalWeatherData(lat=result.lat, lon=result.lon,
                                                             max_hours_back=max_hours_back):            
 
+                cl = pymongo.MongoClient
                 hist_temp_time = datetime.now() - timedelta(hours=i)
                 
                 coordinated_hist_weather = TimestampLocalizationWeather(result.city, result.country_code, hist_temp_time, result.lon, result.lat, historical_temp)
