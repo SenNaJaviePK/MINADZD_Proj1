@@ -178,17 +178,6 @@ def ConnectToDatabase(connection_string, database_name, table_name):
     return connection, database, table
 
 
-def PushData(table, data):
-    actual_record = {"city": result.city, "country_code": result.country_code,
-                         "timestamp": result.timestamp, "lat": result.lat, "lon": result.lon,
-                         "temp": result.weather.temp,
-                         "clouds": result.weather.clouds, "min_temp": result.weather.min_temp,
-                         "max_temp": result.weather.max_temp,
-                         "feels_like": result.weather.feels_like, "humidity": result.weather.humidity,
-                         "pressure": result.weather.pressure,
-                         "visibility": result.weather.visibility, "wind_speed": result.weather.wind_speed}
-
-
 def main():
     # Rerun time in seconds
     rerun_time = 60 * 60
