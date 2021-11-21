@@ -162,24 +162,34 @@ def GatherHistoricalWeatherData(lat, lon, max_hours_back):
 
 
 def ConnectToDatabase(connection_string, database_name, table_name):
-    connection = pymongo.MongoClient(connection_string)
-    database = connection[database_name]
+    client = pymongo.MongoClient(connection_string)
+    database = client[database_name]
     table = database[table_name]
 
-    return connection, database, table
+    return client, database, table
+
+
+def InsertNewRecord(record, cloud_client, cloud_table, local_table):
+    with cloud_client.start_session(causal_consistency=True) as session:
+        with session.start_transaction():
+            try:
+                cloud_table.insert_one(record, session=session)
+                local_table.insert_one(record)
+            except Exception:                
+                session.abort_transaction()
 
 
 def main():
     # Rerun time in seconds
-    rerun_time = 60 * 60
+    rerun_time = -1
 
     # SET max_hours_back=0 if want only actual data
     max_hours_back = 0
 
-    local_connection, local_database, local_table = ConnectToDatabase("mongodb://localhost:27017/", "local_database", "weather_statistic_new")
+    local_client, local_database, local_table = ConnectToDatabase("mongodb://localhost:27017/" "?retryWrites=true&w=majority", "local_database", "weather_statistic_test")
 
-    cloud_connection, cloud_database, cloud_table = ConnectToDatabase(f"mongodb+srv://{cloud_db_user}:{cloud_db_password}@cluster0.fawtu.mongodb.net/myFirstDatabase"
-                                "?retryWrites=true&w=majority", "cloud_database", "weather_statistic_new")
+    cloud_client, cloud_database, cloud_table = ConnectToDatabase(f"mongodb+srv://{cloud_db_user}:{cloud_db_password}@cluster0.fawtu.mongodb.net/myFirstDatabase"
+                                "?retryWrites=true&w=majority", "cloud_database", "weather_statistic_test")
 
     while True:
         for result in GatherCurrentWeatherData(city_search_values):
@@ -187,8 +197,7 @@ def main():
 
             actual_record = result.parse_json()
 
-            local_table.insert_one(actual_record)
-            cloud_table.insert_one(actual_record)
+            InsertNewRecord(actual_record, cloud_client, cloud_table, local_table)
 
             if max_hours_back > 0:
                 print("Historical data:")
@@ -205,8 +214,7 @@ def main():
 
                 hist_record = coordinated_hist_weather.parse_json()
 
-                local_table.insert_one(hist_record)
-                cloud_table.insert_one(hist_record)
+                InsertNewRecord(hist_record, cloud_client, cloud_table, local_table)
                 i += 1
 
         if rerun_time < 0:
